@@ -1,0 +1,29 @@
+/* eslint-disable no-console */
+import path from 'path';
+
+import { loadEnv } from 'vite';
+
+import { startServer } from './xpack/create-server.js';
+
+console.log('[INIT] server');
+
+const argvModeIndex = process.argv.indexOf('--mode');
+const mode =
+  argvModeIndex >= 0 && argvModeIndex < process.argv.length - 1 && !process.argv[argvModeIndex + 1].startsWith('-')
+    ? process.argv[argvModeIndex + 1]
+    : 'production';
+const root = process.cwd();
+const xpackEnv = loadEnv(mode, root);
+const isTest = !!xpackEnv.VITE_TEST_BUILD || process.env.NODE_ENV === 'test';
+const port = xpackEnv.VITE_PORT ? parseInt(xpackEnv.VITE_PORT) : 5000;
+
+if (!isTest) {
+  console.log(root);
+  startServer({
+    root,
+    isTest,
+    port,
+    hmrPort: port + 1,
+    baseUrl: xpackEnv.VITE_BASE_URL,
+  });
+}

@@ -1,0 +1,88 @@
+# This YAML pipeline is configured to run on the 'fe-release' branch trigger.
+# It uses the latest Ubuntu virtual machine image.
+# The pipeline defines several variables, including npm cache location and a custom review ID.
+# The steps in the pipeline are as follows:
+# 1. Checkout the repository with a clean state, persist credentials, and fetch all history.
+# 2. Install 'bun' (a JavaScript runtime) and add it to the PATH.
+# 3. Configure git with a specific user email and name, fetch the 'develop' branch, and merge it.
+# 4. Run 'bun install' to install dependencies, execute a custom 'inte' script, and reset any changes in the working directory.
+#
+# NOTE: Consider pinpoint the version of Bun in you project to avoid breaking changes
+# See: https://bun.sh/docs/installation#installing
+
+resources:
+  repositories:
+    - repository: self
+      type: git
+      ref: fe-release
+
+trigger:
+  - fe-release
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  CUSTOM_REVIEWER_ID: 'ae28c67f-731c-48ab-a8b1-6e3bd2ea71a2' # Check https://tuyen.blog/optimizely-cms/frontend/integration/ for how to get this ID
+  CUSTOM_BUN_VERSION: bun-v1.2.4
+
+steps:
+  - checkout: self
+    clean: true
+    persistCredentials: true
+    fetchDepth: 0
+
+  - script: |
+      curl -fsSL https://bun.sh/install | bash
+      echo '##vso[task.prependpath]~/.bun/bin'
+    displayName: Install bun
+    workingDirectory: PreciseAlloy.Frontend
+
+  - script: |
+      git config --global user.email "$FE_COMMIT_USER_EMAIL"
+      git config --global user.name "$FE_COMMIT_USER_NAME"
+      git fetch origin develop:develop
+      git merge develop
+    displayName: 'Create git branch'
+    env:
+      FE_COMMIT_USER_EMAIL: $(FE_COMMIT_USER_EMAIL)
+      FE_COMMIT_USER_NAME: $(FE_COMMIT_USER_NAME)
+
+  - script: |
+      bun install
+      bun run inte
+      git checkout -- .
+    displayName: 'Run bun install and inte'
+    workingDirectory: ./PreciseAlloy.Frontend
+
+  - script: |
+      git add .
+      git commit -m "Create release package"
+      git push origin HEAD:fe-release-inte-package -f
+    displayName: 'Create release package'
+
+  - task: PowerShell@2
+    displayName: 'PR to develop'
+    inputs:
+      targetType: 'filePath'
+      filePath: $(System.DefaultWorkingDirectory)/PreciseAlloy.Frontend/.build/integration.ps1
+      pwsh: true
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      CUSTOM_REPOSITORY_NAME: $(Build.Repository.Name)
+      CUSTOM_SOURCE_BRANCH: 'fe-release-inte-package'
+      CUSTOM_TARGET_BRANCH: 'develop'
+      CUSTOM_REVIEWER_ID: $(CUSTOM_REVIEWER_ID)
+
+  - task: PowerShell@2
+    displayName: 'PR to fe-develop'
+    inputs:
+      targetType: 'filePath'
+      filePath: $(System.DefaultWorkingDirectory)/PreciseAlloy.Frontend/.build/integration.ps1
+      pwsh: true
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      CUSTOM_REPOSITORY_NAME: $(Build.Repository.Name)
+      CUSTOM_SOURCE_BRANCH: 'fe-release-inte-package'
+      CUSTOM_TARGET_BRANCH: 'fe-develop'
+      CUSTOM_REVIEWER_ID: $(CUSTOM_REVIEWER_ID)
