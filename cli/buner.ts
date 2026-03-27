@@ -1,44 +1,68 @@
 /* eslint-disable no-console */
 
+import type { PackageManager } from './helpers/install.js';
+
 import path from 'path';
-import { execSync, spawn, SpawnOptions } from 'child_process';
+import { fileURLToPath } from 'url';
 
 import { Command } from 'commander';
 import chalk from 'chalk';
 import fetch from 'node-fetch';
 import prompts from 'prompts';
+import { build } from 'vite';
 
 import packageJson from '../package.json';
+import { runStyles } from '../styles.js';
+import { runStates } from '../states.js';
+import { runServer } from '../server.js';
+import { runPrerender } from '../prerender.js';
+import { runIntegration } from '../integration.js';
 
-import { createApp } from './create-app.js';
 import { validateNpmName } from './helpers/validate-pkg.js';
+import { createApp } from './create-app.js';
 
 const { green, yellow, bold, cyan, red } = chalk;
 const packageName = 'buner';
 
-const run = (cmd: string, args: string[] = [], options: SpawnOptions = {}) => {
-  return new Promise<void>((resolve, reject) => {
-    const child = spawn(cmd, args, {
-      stdio: 'inherit',
-      shell: true,
-      cwd: process.cwd(),
-      ...options,
-    });
+// Package's own directory — after compilation, buner.js lives in dist/
+// so __dirname equivalent is the dist/ folder itself
+const packageDir = path.dirname(fileURLToPath(import.meta.url));
 
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Command "${cmd} ${args.join(' ')}" exited with code ${code}`));
-      } else {
-        resolve();
-      }
-    });
+/** Resolve the vite config path */
+const viteConfigPath = () => path.resolve(packageDir, '..', 'vite.config.ts');
 
-    child.on('error', reject);
-  });
-};
+/** Run vite build with the given options */
+const viteBuild = async (opts: { outDir: string; ssr?: string; mode?: string; watch?: boolean }) => {
+  // Set BUNER_MODE so xpack/paths.ts picks up the correct mode
+  // (it can't read --mode from process.argv when using the build() API)
+  const prevMode = process.env.BUNER_MODE;
 
-const runSync = (cmd: string) => {
-  execSync(cmd, { stdio: 'inherit', cwd: process.cwd() });
+  if (opts.mode) {
+    process.env.BUNER_MODE = opts.mode;
+  }
+
+  const config: Record<string, unknown> = {
+    configFile: viteConfigPath(),
+    build: {
+      outDir: opts.outDir,
+      ...(opts.ssr ? { ssr: opts.ssr } : {}),
+      ...(opts.watch ? { watch: {} } : {}),
+    },
+  };
+
+  if (opts.mode) {
+    config.mode = opts.mode;
+  }
+
+  try {
+    await build(config);
+  } finally {
+    if (prevMode === undefined) {
+      delete process.env.BUNER_MODE;
+    } else {
+      process.env.BUNER_MODE = prevMode;
+    }
+  }
 };
 
 const onPromptState = (state: { value?: string; aborted?: boolean }) => {
@@ -83,6 +107,8 @@ program
   .argument('[project-directory]', 'the project name', '')
   .description('Scaffold a new frontend project')
   .action(async (projectPath: string) => {
+    let packageManager: PackageManager = 'npm';
+
     if (!projectPath) {
       const validation = validateNpmName('my-app');
 
@@ -108,6 +134,24 @@ program
       }
     }
 
+    const packageManagerPrompt = await prompts({
+      onState: onPromptState,
+      type: 'select',
+      name: 'packageManager',
+      message: 'Which package manager do you want to use?',
+      initial: 0,
+      choices: [
+        { title: 'npm', value: 'npm' },
+        { title: 'pnpm', value: 'pnpm' },
+        { title: 'yarn', value: 'yarn' },
+        { title: 'bun', value: 'bun' },
+      ],
+    });
+
+    if (packageManagerPrompt.packageManager) {
+      packageManager = packageManagerPrompt.packageManager as PackageManager;
+    }
+
     if (!projectPath) {
       console.log(
         '\nPlease specify the project directory:\n' +
@@ -120,7 +164,7 @@ program
 
     const resolvedProjectPath = path.resolve(projectPath);
 
-    await createApp({ appPath: resolvedProjectPath });
+    await createApp({ appPath: resolvedProjectPath, packageManager });
     await notifyUpdate();
   });
 
@@ -129,14 +173,11 @@ program
   .command('dev')
   .description('Start development mode with all watchers')
   .action(async () => {
-    await run('npx', [
-      'concurrently',
-      '--kill-others',
-      '"bun styles.ts --watch"',
-      '"bun states.ts --watch"',
-      '"cross-env scriptOnly=true npx vite build --mode development --watch"',
-      '"bun server.ts --mode development"',
-    ]);
+    runStyles({ watch: true });
+    runStates({ watch: true });
+    process.env.scriptOnly = 'true';
+    viteBuild({ outDir: 'dist/static', mode: 'development', watch: true });
+    runServer({ mode: 'development' });
   });
 
 // buner serve
@@ -145,7 +186,7 @@ program
   .description('Start the SSR dev server')
   .option('--mode <mode>', 'server mode', 'development')
   .action(async (opts) => {
-    await run('bun', ['server.ts', '--mode', opts.mode]);
+    runServer({ mode: opts.mode });
   });
 
 // buner build
@@ -153,8 +194,8 @@ program
   .command('build')
   .description('Build the project (static + SSR)')
   .action(async () => {
-    runSync('npx vite build --outDir dist/static');
-    runSync('npx vite build --ssr src/entry-server.tsx --outDir dist/server');
+    await viteBuild({ outDir: 'dist/static' });
+    await viteBuild({ outDir: 'dist/server', ssr: 'src/entry-server.tsx' });
   });
 
 // buner generate
@@ -163,16 +204,11 @@ program
   .description('Full static site generation (states + styles + build + prerender)')
   .option('--mode <mode>', 'build mode', 'production')
   .action(async (opts) => {
-    runSync('bun states.ts');
-    runSync('bun styles.ts');
-    if (opts.mode === 'production') {
-      runSync('npx vite build --outDir dist/static');
-      runSync('npx vite build --ssr src/entry-server.tsx --outDir dist/server');
-    } else {
-      runSync(`npx vite build --outDir dist/static --mode ${opts.mode}`);
-      runSync(`npx vite build --ssr src/entry-server.tsx --outDir dist/server --mode ${opts.mode}`);
-    }
-    runSync(`bun prerender.ts --add-hash --mode ${opts.mode}`);
+    runStates();
+    runStyles();
+    await viteBuild({ outDir: 'dist/static', mode: opts.mode !== 'production' ? opts.mode : undefined });
+    await viteBuild({ outDir: 'dist/server', ssr: 'src/entry-server.tsx', mode: opts.mode !== 'production' ? opts.mode : undefined });
+    await runPrerender({ addHash: true, mode: opts.mode });
   });
 
 // buner eshn
@@ -180,11 +216,11 @@ program
   .command('eshn')
   .description('Generate with --mode eshn')
   .action(async () => {
-    runSync('bun states.ts');
-    runSync('bun styles.ts');
-    runSync('npx vite build --outDir dist/static --mode eshn');
-    runSync('npx vite build --ssr src/entry-server.tsx --outDir dist/server --mode eshn');
-    runSync('bun prerender.ts --add-hash --mode eshn');
+    runStates();
+    runStyles();
+    await viteBuild({ outDir: 'dist/static', mode: 'eshn' });
+    await viteBuild({ outDir: 'dist/server', ssr: 'src/entry-server.tsx', mode: 'eshn' });
+    await runPrerender({ addHash: true, mode: 'eshn' });
   });
 
 // buner inte
@@ -192,11 +228,11 @@ program
   .command('inte')
   .description('Build and integrate with backend (styles + build + prerender + integration)')
   .action(async () => {
-    runSync('bun styles.ts');
-    runSync('npx vite build --outDir dist/static');
-    runSync('npx vite build --ssr src/entry-server.tsx --outDir dist/server');
-    runSync('bun prerender.ts');
-    runSync('bun integration.ts');
+    runStyles();
+    await viteBuild({ outDir: 'dist/static' });
+    await viteBuild({ outDir: 'dist/server', ssr: 'src/entry-server.tsx' });
+    await runPrerender();
+    runIntegration();
   });
 
 // buner styles
@@ -205,10 +241,7 @@ program
   .description('Compile SCSS')
   .option('--watch', 'Watch for changes')
   .action(async (opts) => {
-    const args = ['styles.ts'];
-
-    if (opts.watch) args.push('--watch');
-    await run('bun', args);
+    runStyles({ watch: opts.watch });
   });
 
 // buner prerender
@@ -218,11 +251,7 @@ program
   .option('--add-hash', 'Add content hashes to asset URLs')
   .option('--mode <mode>', 'build mode', 'production')
   .action(async (opts) => {
-    const args = ['prerender.ts'];
-
-    if (opts.addHash) args.push('--add-hash');
-    args.push('--mode', opts.mode);
-    await run('bun', args);
+    await runPrerender({ addHash: opts.addHash, mode: opts.mode });
   });
 
 program.parseAsync(process.argv).catch(async (error) => {

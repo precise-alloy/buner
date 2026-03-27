@@ -1,6 +1,6 @@
 {
   "name": "buner",
-  "version": "1.0.0",
+  "version": "1.0.12",
   "description": "Frontend build toolkit for Vite + React SSR projects — SCSS pipeline, prerender, SSR dev server, and backend integration.",
   "type": "module",
   "license": "MIT",
@@ -20,20 +20,12 @@
     "cli"
   ],
   "bin": {
-    "buner": "./bin/buner.js"
+    "buner": "./dist/buner.js"
   },
   "files": [
-    "bin",
-    "cli",
+    "dist",
     "xpack",
     "public",
-    "server.ts",
-    "prerender.ts",
-    "integration.ts",
-    "styles.ts",
-    "scripts.ts",
-    "states.ts",
-    "migrate-scss.ts",
     "vite.config.ts",
     "index.html",
     "tsconfig.json",

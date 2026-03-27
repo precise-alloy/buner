@@ -21,8 +21,9 @@ npm install -g buner
 ```bash
 npx buner create my-app
 cd my-app
-npm install
 ```
+
+`buner create` now asks you to choose a package manager (`npm`, `pnpm`, `yarn`, or `bun`) and installs dependencies automatically.
 
 ### Development
 

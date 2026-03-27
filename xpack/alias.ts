@@ -1,8 +1,9 @@
 import path from 'path';
 
-import { root, srcRoot } from './paths';
+import { srcRoot, packageRoot } from './paths';
 
 const alias = [
+  { find: '@src', replacement: srcRoot },
   { find: '@atoms', replacement: path.resolve(srcRoot, 'atoms') },
   { find: '@molecules', replacement: path.resolve(srcRoot, 'molecules') },
   { find: '@organisms', replacement: path.resolve(srcRoot, 'organisms') },
@@ -15,7 +16,7 @@ const alias = [
   { find: '@_http', replacement: path.resolve(srcRoot, '_http') },
   { find: '@_api', replacement: path.resolve(srcRoot, '_api') },
   { find: '@mocks', replacement: path.resolve(srcRoot, 'mocks') },
-  { find: '@xpack', replacement: path.resolve(root, 'xpack') },
+  { find: '@xpack', replacement: path.resolve(packageRoot, 'xpack') },
 ];
 
 export default alias;

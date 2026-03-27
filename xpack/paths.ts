@@ -6,9 +6,10 @@ import { loadEnv } from 'vite';
 
 const argvModeIndex = process.argv.indexOf('--mode');
 const mode =
-  argvModeIndex >= 0 && argvModeIndex < process.argv.length - 1 && !process.argv[argvModeIndex + 1].startsWith('-')
+  process.env.BUNER_MODE ??
+  (argvModeIndex >= 0 && argvModeIndex < process.argv.length - 1 && !process.argv[argvModeIndex + 1].startsWith('-')
     ? process.argv[argvModeIndex + 1]
-    : 'production';
+    : 'production');
 
 // Consumer project root — where buner commands are run
 export const root = slash(process.cwd());

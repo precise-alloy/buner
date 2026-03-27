@@ -30,7 +30,7 @@ export const getEntryFileName = (chunkInfo: PreRenderedChunk): string => {
     return chunkInfo.name + '.js';
   }
 
-  if (chunkInfo.name === 'index') {
+  if (chunkInfo.name === 'index' || chunkInfo.name === 'react-loader-init') {
     return 'assets/js/react-loader.0x[hash].js';
   }
 

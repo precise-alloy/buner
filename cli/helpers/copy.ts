@@ -8,24 +8,28 @@ interface CopyOption {
 }
 
 const excludeFiles = [
+  'dist',
   '.git',
+  '.github',
+  '.npmrc',
   'bin',
+  'cli',
+  'xpack',
   '.vscode',
   '.build',
+  'node_modules',
+  'server.ts',
+  'prerender.ts',
+  'integration.ts',
+  'styles.ts',
+  'scripts.ts',
+  'states.ts',
+  'migrate-scss.ts',
+  'vite.config.ts',
+  'vite.cli.config.ts',
+  'src',
   'public/samples',
   'public/assets/vendors',
-  'src/_api/!(_base.ts)',
-  'src/_data',
-  'src/assets/scripts/!(color-mode|main|mock-api|pl-states|root|theme-critical).entry.ts',
-  'src/atoms',
-  'src/mocks/avatar',
-  'src/mocks/user',
-  'src/molecules',
-  'src/organisms/!(root|header|footer)/*',
-  'src/pages/!(Root|Home).tsx',
-  'src/templates/!(root|home)/*',
-  '!cli',
-  '!vite.cli.config.ts',
 ];
 
 const copy = async (src: string | string[], dest: string, { cwd }: CopyOption) => {
@@ -38,10 +42,6 @@ const copy = async (src: string | string[], dest: string, { cwd }: CopyOption) =
   });
 
   const destRelativeToCwd = path.resolve(dest);
-
-  await fs.mkdir(path.join(destRelativeToCwd, 'src/atoms'), { recursive: true });
-  await fs.mkdir(path.join(destRelativeToCwd, 'src/molecules'), { recursive: true });
-  await fs.mkdir(path.join(destRelativeToCwd, 'src/mocks/example'), { recursive: true });
 
   return Promise.all(
     sourceFiles.map(async (p) => {

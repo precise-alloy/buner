@@ -19,161 +19,177 @@ interface FileExistCheck {
   fileName: string | RegExp;
 }
 
-const argvModeIndex = process.argv.indexOf('--mode');
-const mode =
-  argvModeIndex >= 0 && argvModeIndex < process.argv.length - 1 && !process.argv[argvModeIndex + 1].startsWith('-')
-    ? process.argv[argvModeIndex + 1]
-    : 'production';
-const projectRoot = process.cwd();
-const xpackEnv = loadEnv(mode, projectRoot);
-const toAbsolute = (p: string) => slash(path.resolve(projectRoot, p));
-const log = console.log.bind(console);
-
-const hashes: Map<string, string> = new Map();
-const staticBasePath = toAbsolute('dist/static');
-const srcBasePath = toAbsolute('dist/static/assets');
-const destBasePath = toAbsolute(xpackEnv.VITE_INTE_ASSET_DIR);
-const patternPath = xpackEnv.VITE_INTE_PATTERN_DIR ? toAbsolute(xpackEnv.VITE_INTE_PATTERN_DIR) : undefined;
-
-if (patternPath && fs.existsSync(patternPath)) {
-  fs.rmSync(patternPath, { recursive: true, force: true });
-
-  fs.mkdirSync(patternPath, { recursive: true });
+export interface IntegrationOptions {
+  mode?: string;
 }
 
-const copyItems: CopyItem[] = [
-  { from: 'css' },
-  { from: 'fonts' },
-  { from: 'images' },
-  { from: 'js' },
-  { from: 'vendors' },
-  { from: 'hashes.json' },
-  { from: 'pages', to: patternPath },
-];
-const hashItems: string[] = ['css', 'images', 'js'];
+export const runIntegration = (options: IntegrationOptions = {}) => {
+  const mode = options.mode ?? 'production';
 
-copyItems.forEach((item) => {
-  const srcPath = slash(path.join(srcBasePath, item.from));
-  const destPath = slash(item.to ?? path.join(destBasePath, item.from));
+  const projectRoot = process.cwd();
+  const xpackEnv = loadEnv(mode, projectRoot);
+  const toAbsolute = (p: string) => slash(path.resolve(projectRoot, p));
+  const log = console.log.bind(console);
 
-  if (!fs.existsSync(srcPath)) {
-    return;
+  const hashes: Map<string, string> = new Map();
+  const staticBasePath = toAbsolute('dist/static');
+  const srcBasePath = toAbsolute('dist/static/assets');
+  const destBasePath = toAbsolute(xpackEnv.VITE_INTE_ASSET_DIR);
+  const patternPath = xpackEnv.VITE_INTE_PATTERN_DIR ? toAbsolute(xpackEnv.VITE_INTE_PATTERN_DIR) : undefined;
+
+  if (patternPath && fs.existsSync(patternPath)) {
+    fs.rmSync(patternPath, { recursive: true, force: true });
+
+    fs.mkdirSync(patternPath, { recursive: true });
   }
 
-  log(`Copy file ${srcPath} to ${destPath}`);
+  const copyItems: CopyItem[] = [
+    { from: 'css' },
+    { from: 'fonts' },
+    { from: 'images' },
+    { from: 'js' },
+    { from: 'vendors' },
+    { from: 'hashes.json' },
+    { from: 'pages', to: patternPath },
+  ];
+  const hashItems: string[] = ['css', 'images', 'js'];
 
-  if (fs.statSync(srcPath).isDirectory()) {
-    if (fs.existsSync(destPath)) {
-      fs.rmSync(destPath, { recursive: true, force: true });
+  copyItems.forEach((item) => {
+    const srcPath = slash(path.join(srcBasePath, item.from));
+    const destPath = slash(item.to ?? path.join(destBasePath, item.from));
+
+    if (!fs.existsSync(srcPath)) {
+      return;
     }
 
-    fs.mkdirSync(destPath, { recursive: true });
+    log(`Copy file ${srcPath} to ${destPath}`);
 
-    fs.cpSync(srcPath, destPath, { recursive: true, force: true });
-  } else {
-    const destDirPath = path.dirname(destPath);
+    if (fs.statSync(srcPath).isDirectory()) {
+      if (fs.existsSync(destPath)) {
+        fs.rmSync(destPath, { recursive: true, force: true });
+      }
 
-    if (!fs.existsSync(destDirPath)) {
-      fs.mkdirSync(destDirPath);
-    }
+      fs.mkdirSync(destPath, { recursive: true });
 
-    fs.copyFileSync(srcPath, destPath);
-  }
-});
-
-hashItems.forEach((item) => {
-  const srcPath = slash(path.join(srcBasePath, item));
-  const files = glob.sync(srcPath + '/**/*.{css,js,svg}');
-
-  files.forEach((file) => {
-    const relativePath = slash(file.substring(staticBasePath.length));
-
-    if (!/\.0x[a-z0-9_-]{8,12}\.\w+$/gi.test(file)) {
-      const content = fs.readFileSync(file);
-      const sha1Hash = crypto.createHash('sha1');
-
-      sha1Hash.update(content);
-      const hash = sha1Hash.digest('base64url').substring(0, 10);
-
-      hashes.set(relativePath, hash);
+      fs.cpSync(srcPath, destPath, { recursive: true, force: true });
     } else {
-      hashes.set(relativePath, '');
-    }
-  });
-});
+      const destDirPath = path.dirname(destPath);
 
-const sortedHashes = Array.from(hashes)
-  .sort((a, b) => a[0].localeCompare(b[0]))
-  .reduce(
-    (obj, [key, value]) => {
-      obj[key] = value;
+      if (!fs.existsSync(destDirPath)) {
+        fs.mkdirSync(destDirPath);
+      }
 
-      return obj;
-    },
-    {} as { [key: string]: string }
-  );
-
-fs.writeFileSync(path.join(destBasePath, 'hashes.json'), JSON.stringify(sortedHashes, null, '  '));
-
-if (patternPath) {
-  fs.mkdirSync(patternPath, { recursive: true });
-  glob.sync('./dist/static/{atoms,molecules,organisms,templates,pages}/**/*.*').forEach((p) => {
-    let basename = '';
-    const segments = slash(p).split('/');
-
-    if (segments.length < 4) return;
-    switch (segments.length) {
-      case 4:
-        basename = path.basename(slash(p).replaceAll(/(atoms|molecules|organisms|templates|pages)\/([\w._-]+)$/gi, '$1-$2'));
-        fs.copyFileSync(p, resolve(patternPath, basename));
-        break;
-      default:
-        segments.splice(0, 2);
-        nodeFs.cpSync(p, resolve(patternPath, segments.join('-')), { recursive: true });
-        break;
+      fs.copyFileSync(srcPath, destPath);
     }
   });
 
-  glob.sync(slash(path.resolve(patternPath + '/**/*.{htm,html}'))).forEach((p) => {
-    const text = fs.readFileSync(p, 'utf-8');
-    const newText = text
-      .replaceAll(/react-loader\.0x[a-z0-9_-]{8,12}\.js/gi, 'react-loader.0x00000000.js')
-      .replaceAll(/\.svg\?v=[a-z0-9_-]+/gi, '.svg');
+  hashItems.forEach((item) => {
+    const srcPath = slash(path.join(srcBasePath, item));
+    const files = glob.sync(srcPath + '/**/*.{css,js,svg}');
 
-    if (text !== newText) {
-      fs.writeFileSync(p, newText);
-    }
+    files.forEach((file) => {
+      const relativePath = slash(file.substring(staticBasePath.length));
+
+      if (!/\.0x[a-z0-9_-]{8,12}\.\w+$/gi.test(file)) {
+        const content = fs.readFileSync(file);
+        const sha1Hash = crypto.createHash('sha1');
+
+        sha1Hash.update(content);
+        const hash = sha1Hash.digest('base64url').substring(0, 10);
+
+        hashes.set(relativePath, hash);
+      } else {
+        hashes.set(relativePath, '');
+      }
+    });
   });
-}
 
-const checkExistFileList: FileExistCheck[] = [
-  { fileName: 'hashes.json' },
-  { fileName: /react-loader\.0x[a-z0-9_-]{8,12}\.js/gi, folder: 'js' },
-  { fileName: 'main.js', folder: 'js' },
-];
-let isAllExist = true;
+  const sortedHashes = Array.from(hashes)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .reduce(
+      (obj, [key, value]) => {
+        obj[key] = value;
 
-checkExistFileList.forEach((file) => {
-  if (typeof file.fileName === 'string') {
-    const destPath = slash(path.join(destBasePath, file.folder ?? '', file.fileName.toString()));
+        return obj;
+      },
+      {} as { [key: string]: string }
+    );
 
-    if (!fs.existsSync(destPath)) {
-      log(chalk.yellow(`Cannot find: ${destPath}`));
-      isAllExist = false;
-    }
-  } else {
-    const fileName = file.fileName;
-    const folderFiles = slash(path.join(destBasePath, file.folder ?? ''));
-    const files = fs.readdirSync(folderFiles);
-    const found = files.find((f) => fileName.test(f));
+  fs.writeFileSync(path.join(destBasePath, 'hashes.json'), JSON.stringify(sortedHashes, null, '  '));
 
-    if (!found) {
-      log(chalk.yellow(`Cannot find: ${slash(path.join(folderFiles, fileName.toString()))}`));
-      isAllExist = false;
-    }
+  if (patternPath) {
+    fs.mkdirSync(patternPath, { recursive: true });
+    glob.sync('./dist/static/{atoms,molecules,organisms,templates,pages}/**/*.*').forEach((p) => {
+      let basename = '';
+      const segments = slash(p).split('/');
+
+      if (segments.length < 4) return;
+      switch (segments.length) {
+        case 4:
+          basename = path.basename(slash(p).replaceAll(/(atoms|molecules|organisms|templates|pages)\/([\w._-]+)$/gi, '$1-$2'));
+          fs.copyFileSync(p, resolve(patternPath, basename));
+          break;
+        default:
+          segments.splice(0, 2);
+          nodeFs.cpSync(p, resolve(patternPath, segments.join('-')), { recursive: true });
+          break;
+      }
+    });
+
+    glob.sync(slash(path.resolve(patternPath + '/**/*.{htm,html}'))).forEach((p) => {
+      const text = fs.readFileSync(p, 'utf-8');
+      const newText = text
+        .replaceAll(/react-loader\.0x[a-z0-9_-]{8,12}\.js/gi, 'react-loader.0x00000000.js')
+        .replaceAll(/\.svg\?v=[a-z0-9_-]+/gi, '.svg');
+
+      if (text !== newText) {
+        fs.writeFileSync(p, newText);
+      }
+    });
   }
-});
 
-if (!isAllExist) {
-  process.exit(1);
+  const checkExistFileList: FileExistCheck[] = [
+    { fileName: 'hashes.json' },
+    { fileName: /react-loader\.0x[a-z0-9_-]{8,12}\.js/gi, folder: 'js' },
+    { fileName: 'main.js', folder: 'js' },
+  ];
+  let isAllExist = true;
+
+  checkExistFileList.forEach((file) => {
+    if (typeof file.fileName === 'string') {
+      const destPath = slash(path.join(destBasePath, file.folder ?? '', file.fileName.toString()));
+
+      if (!fs.existsSync(destPath)) {
+        log(chalk.yellow(`Cannot find: ${destPath}`));
+        isAllExist = false;
+      }
+    } else {
+      const fileName = file.fileName;
+      const folderFiles = slash(path.join(destBasePath, file.folder ?? ''));
+      const files = fs.readdirSync(folderFiles);
+      const found = files.find((f) => fileName.test(f));
+
+      if (!found) {
+        log(chalk.yellow(`Cannot find: ${slash(path.join(folderFiles, fileName.toString()))}`));
+        isAllExist = false;
+      }
+    }
+  });
+
+  if (!isAllExist) {
+    process.exit(1);
+  }
+}; // end runIntegration
+
+// Direct execution support
+const isDirectRun = process.argv[1]?.endsWith('integration.js') || process.argv[1]?.endsWith('integration.ts');
+
+if (isDirectRun) {
+  const argvModeIndex = process.argv.indexOf('--mode');
+  const mode =
+    argvModeIndex >= 0 && argvModeIndex < process.argv.length - 1 && !process.argv[argvModeIndex + 1].startsWith('-')
+      ? process.argv[argvModeIndex + 1]
+      : 'production';
+
+  runIntegration({ mode });
 }

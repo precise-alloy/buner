@@ -5,9 +5,24 @@ import chalk from 'chalk';
 
 const { red } = chalk;
 
-const install = async () => {
+type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
+
+const INSTALL_COMMANDS: Record<PackageManager, string> = {
+  npm: 'npm install',
+  pnpm: 'pnpm install',
+  yarn: 'yarn install',
+  bun: 'bun install',
+};
+
+interface InstallOptions {
+  cwd?: string;
+}
+
+const install = async (packageManager: PackageManager = 'npm', options: InstallOptions = {}) => {
+  const installCommand = INSTALL_COMMANDS[packageManager] ?? INSTALL_COMMANDS.npm;
+
   return new Promise((resolve, reject) => {
-    exec('npm install', (error, stdout) => {
+    exec(installCommand, { cwd: options.cwd }, (error, stdout) => {
       if (error) {
         reject(error);
 
@@ -23,4 +38,4 @@ const install = async () => {
   });
 };
 
-export { install };
+export { install, PackageManager };

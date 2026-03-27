@@ -4,8 +4,8 @@ const entryFileNames = () => {
   return '[name].js';
 };
 
-const bannerFileNames = () => {
-  return '#!/usr/bin/env node';
+const bannerFileNames = (chunk: { name: string }) => {
+  return chunk.name === 'buner' ? '#!/usr/bin/env node' : '';
 };
 
 export default defineConfig({
@@ -13,11 +13,11 @@ export default defineConfig({
   publicDir: false,
   build: {
     emptyOutDir: true,
-    outDir: 'bin',
+    outDir: 'dist',
     sourcemap: false,
     ssr: true,
     rollupOptions: {
-      input: ['cli/buner.ts'],
+      input: ['cli/buner.ts', 'server.ts', 'prerender.ts', 'integration.ts', 'styles.ts', 'scripts.ts', 'states.ts', 'migrate-scss.ts'],
       output: {
         entryFileNames,
         banner: bannerFileNames,

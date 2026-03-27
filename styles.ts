@@ -12,221 +12,237 @@ import postcss, { ProcessOptions } from 'postcss';
 import autoprefixer from 'autoprefixer';
 import cssnano from 'cssnano';
 
-const isWatch = process.argv.includes('--watch');
+export interface StylesOptions {
+  watch?: boolean;
+}
+
+export const runStyles = (options: StylesOptions = {}) => {
+  const isWatch = options.watch ?? false;
+
+  _run(isWatch);
+};
+
 const outDir = './public/assets/css';
-
-if (!isWatch && fs.existsSync(outDir)) {
-  fs.rmSync(outDir, { force: true, recursive: true });
-}
-
-if (!fs.existsSync(outDir)) {
-  fs.mkdirSync(outDir, { recursive: true });
-}
 
 // Something to use when events are received.
 const log = console.log.bind(console);
 
-const prepareCssFileContent = ({
-  srcFile,
-  includeMixins = true,
-  includeAbstracts = true,
-}: {
-  srcFile: string;
-  includeMixins?: boolean;
-  includeAbstracts?: boolean;
-}) => {
-  return [
-    includeAbstracts
-      ? slash(`@use '${path.relative(path.dirname(srcFile), path.resolve('src/assets/styles/00-abstracts/abstracts'))}' as *;\n`)
-      : undefined,
-    includeMixins ? slash(`@use '${path.relative(path.dirname(srcFile), path.resolve('src/assets/styles/01-mixins/mixins'))}' as *;\n`) : undefined,
-    fs.readFileSync(srcFile, 'utf-8'),
-  ].filter(Boolean);
-};
+const _run = (isWatch: boolean) => {
+  if (!isWatch && fs.existsSync(outDir)) {
+    fs.rmSync(outDir, { force: true, recursive: true });
+  }
 
-const stringOptions = (srcFile: string): sass.StringOptions<'sync' | 'async'> => {
-  const options: sass.StringOptions<'sync' | 'async'> = {
-    sourceMap: true,
-    sourceMapIncludeSources: true,
-    syntax: 'scss',
-    style: 'compressed',
-    url: pathToFileURL(path.resolve(srcFile)),
-    importer: {
-      canonicalize(url) {
-        return new URL(url);
-      },
-      load(canonicalUrl: URL) {
-        let filePath = fileURLToPath(canonicalUrl);
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
 
-        if (!filePath.endsWith('.scss')) {
-          const parentDir = path.dirname(filePath);
-          const fileName = path.basename(filePath);
-
-          filePath = path.join(parentDir, fileName + '.scss');
-
-          if (!fs.existsSync(filePath)) {
-            filePath = path.join(parentDir, '_' + fileName + '.scss');
-          }
-        }
-
-        if (!fs.existsSync(filePath)) return null;
-
-        if (filePath.includes('abstracts') || filePath.includes('_mixins') || filePath.includes('_base') || filePath.includes('xpack'))
-          return {
-            contents: fs.readFileSync(filePath, 'utf-8'),
-            syntax: 'scss',
-          };
-
-        let content = prepareCssFileContent({ srcFile: filePath });
-
-        if (filePath.includes('mixins')) {
-          content = prepareCssFileContent({ srcFile: filePath, includeMixins: false });
-        }
-
-        return {
-          contents: content.join(''),
-          syntax: 'scss',
-        };
-      },
-    },
+  const prepareCssFileContent = ({
+    srcFile,
+    includeMixins = true,
+    includeAbstracts = true,
+  }: {
+    srcFile: string;
+    includeMixins?: boolean;
+    includeAbstracts?: boolean;
+  }) => {
+    return [
+      includeAbstracts
+        ? slash(`@use '${path.relative(path.dirname(srcFile), path.resolve('src/assets/styles/00-abstracts/abstracts'))}' as *;\n`)
+        : undefined,
+      includeMixins ? slash(`@use '${path.relative(path.dirname(srcFile), path.resolve('src/assets/styles/01-mixins/mixins'))}' as *;\n`) : undefined,
+      fs.readFileSync(srcFile, 'utf-8'),
+    ].filter(Boolean);
   };
 
-  return options;
-};
+  const stringOptions = (srcFile: string): sass.StringOptions<'sync' | 'async'> => {
+    const options: sass.StringOptions<'sync' | 'async'> = {
+      sourceMap: true,
+      sourceMapIncludeSources: true,
+      syntax: 'scss',
+      style: 'compressed',
+      url: pathToFileURL(path.resolve(srcFile)),
+      importer: {
+        canonicalize(url) {
+          return new URL(url);
+        },
+        load(canonicalUrl: URL) {
+          let filePath = fileURLToPath(canonicalUrl);
 
-const compile = (srcFile: string, options: { prefix?: string; isReady: boolean }) => {
-  if (options.isReady) {
-    log('compile:', slash(srcFile));
-  }
+          if (!filePath.endsWith('.scss')) {
+            const parentDir = path.dirname(filePath);
+            const fileName = path.basename(filePath);
 
-  if (path.basename(srcFile).startsWith('_')) {
-    return;
-  }
+            filePath = path.join(parentDir, fileName + '.scss');
 
-  const name =
-    path.basename(srcFile) === 'index.scss' ? path.basename(path.dirname(srcFile)) + '.css' : path.basename(srcFile).replace(/\.scss$/gi, '.css');
+            if (!fs.existsSync(filePath)) {
+              filePath = path.join(parentDir, '_' + fileName + '.scss');
+            }
+          }
 
-  const outFile = (options.prefix ?? '') + name;
+          if (!fs.existsSync(filePath)) return null;
 
-  const cssStrings = srcFile.includes('xpack') ? [fs.readFileSync(srcFile, 'utf-8')] : prepareCssFileContent({ srcFile });
+          if (filePath.includes('abstracts') || filePath.includes('_mixins') || filePath.includes('_base') || filePath.includes('xpack'))
+            return {
+              contents: fs.readFileSync(filePath, 'utf-8'),
+              syntax: 'scss',
+            };
 
-  if (srcFile.includes('style-base') || srcFile.includes('style-all')) {
-    glob.sync('./src/atoms/**/*.scss').forEach((atomPath) => {
-      if (!path.basename(atomPath).startsWith('_')) {
-        cssStrings.push(sass.compileString(prepareCssFileContent({ srcFile: atomPath }).join(''), stringOptions(atomPath)).css);
-      }
-    });
+          let content = prepareCssFileContent({ srcFile: filePath });
 
-    glob.sync('./src/molecules/**/*.scss').forEach((molPath) => {
-      if (!path.basename(molPath).startsWith('_')) {
-        cssStrings.push(sass.compileString(prepareCssFileContent({ srcFile: molPath }).join(''), stringOptions(molPath)).css);
-      }
-    });
-  }
+          if (filePath.includes('mixins')) {
+            content = prepareCssFileContent({ srcFile: filePath, includeMixins: false });
+          }
 
-  sass
-    .compileStringAsync(cssStrings.join(''), stringOptions(srcFile))
-    .then((result) => postcssProcess(result, srcFile, outFile))
-    .catch((error) => {
-      log(error);
-    });
-};
+          return {
+            contents: content.join(''),
+            syntax: 'scss',
+          };
+        },
+      },
+    };
 
-const postcssProcess = (result: sass.CompileResult, from: string, to: string) => {
-  const postcssOptions: ProcessOptions = { from: pathToFileURL(from).href, to, map: { prev: result.sourceMap, absolute: false } };
+    return options;
+  };
 
-  postcss([autoprefixer({ grid: true }), cssnano])
-    .process(result.css, postcssOptions)
-    .then((result) => {
-      fs.writeFileSync(path.join(outDir, to), result.css + (result.map ? `\n/*# sourceMappingURL=${to}.map */` : ''));
-
-      if (result.map) {
-        fs.writeFileSync(path.join(outDir, to + '.map'), result.map.toString());
-      }
-    });
-};
-
-const styleOrganisms = debounce((isReady: boolean) => {
-  const paths = glob.sync('src/organisms/**/*.scss', { nodir: true });
-
-  [].forEach.call(paths, (p: string) => styleOrganism(p, isReady));
-}, 200);
-
-const styleTemplates = debounce((isReady: boolean) => {
-  const paths = glob.sync('src/templates/**/*.scss', { nodir: true });
-
-  [].forEach.call(paths, (p: string) => styleTemplate(p, isReady));
-}, 200);
-
-const styleBase = debounce((isReady: boolean) => compile('src/assets/styles/style-base.scss', { isReady }), 200);
-const stylePlState = debounce((isReady: boolean) => compile('xpack/styles/pl-states.scss', { isReady }), 200);
-const styleRoot = debounce((isReady: boolean) => compile('xpack/styles/root.scss', { isReady }), 200);
-const styleOrganism = (srcFile: string, isReady: boolean) => compile(srcFile, { prefix: 'b-', isReady });
-const styleTemplate = (srcFile: string, isReady: boolean) => compile(srcFile, { prefix: 'p-', isReady });
-
-const sassCompile = (inputPath: string, isReady: boolean) => {
-  const p = slash(inputPath);
-
-  if (p.startsWith('src/assets/styles/00-abstracts/') || p.startsWith('src/assets/styles/01-mixins/')) {
-    styleBase(isReady);
-    styleOrganisms(isReady);
-    styleTemplates(isReady);
-    stylePlState(isReady);
-  }
-
-  if (p.startsWith('src/atoms') || p.startsWith('src/molecules') || p.startsWith('src/assets/styles/02-base')) {
-    styleBase(isReady);
-  }
-
-  if (p.startsWith('src/organisms')) {
-    if (path.basename(p).startsWith('_')) {
-      glob
-        .sync(path.dirname(p) + '/*.scss', { nodir: true })
-        .filter((p) => !path.basename(p).startsWith('_'))
-        .forEach((p) => styleOrganism(p, isReady));
-    } else {
-      styleOrganism(p, isReady);
+  const compile = (srcFile: string, options: { prefix?: string; isReady: boolean }) => {
+    if (options.isReady) {
+      log('compile:', slash(srcFile));
     }
-  }
 
-  if (p.startsWith('src/templates')) {
-    if (path.basename(p).startsWith('_')) {
-      glob
-        .sync(path.dirname(p) + '/*.scss', { nodir: true })
-        .filter((p) => !path.basename(p).startsWith('_'))
-        .forEach((p) => styleTemplate(p, isReady));
-    } else {
-      styleTemplate(p, isReady);
+    if (path.basename(srcFile).startsWith('_')) {
+      return;
     }
+
+    const name =
+      path.basename(srcFile) === 'index.scss' ? path.basename(path.dirname(srcFile)) + '.css' : path.basename(srcFile).replace(/\.scss$/gi, '.css');
+
+    const outFile = (options.prefix ?? '') + name;
+
+    const cssStrings = srcFile.includes('xpack') ? [fs.readFileSync(srcFile, 'utf-8')] : prepareCssFileContent({ srcFile });
+
+    if (srcFile.includes('style-base') || srcFile.includes('style-all')) {
+      glob.sync('./src/atoms/**/*.scss').forEach((atomPath) => {
+        if (!path.basename(atomPath).startsWith('_')) {
+          cssStrings.push(sass.compileString(prepareCssFileContent({ srcFile: atomPath }).join(''), stringOptions(atomPath)).css);
+        }
+      });
+
+      glob.sync('./src/molecules/**/*.scss').forEach((molPath) => {
+        if (!path.basename(molPath).startsWith('_')) {
+          cssStrings.push(sass.compileString(prepareCssFileContent({ srcFile: molPath }).join(''), stringOptions(molPath)).css);
+        }
+      });
+    }
+
+    sass
+      .compileStringAsync(cssStrings.join(''), stringOptions(srcFile))
+      .then((result) => postcssProcess(result, srcFile, outFile))
+      .catch((error) => {
+        log(error);
+      });
+  };
+
+  const postcssProcess = (result: sass.CompileResult, from: string, to: string) => {
+    const postcssOptions: ProcessOptions = { from: pathToFileURL(from).href, to, map: { prev: result.sourceMap, absolute: false } };
+
+    postcss([autoprefixer({ grid: true }), cssnano])
+      .process(result.css, postcssOptions)
+      .then((result) => {
+        fs.writeFileSync(path.join(outDir, to), result.css + (result.map ? `\n/*# sourceMappingURL=${to}.map */` : ''));
+
+        if (result.map) {
+          fs.writeFileSync(path.join(outDir, to + '.map'), result.map.toString());
+        }
+      });
+  };
+
+  const styleOrganisms = debounce((isReady: boolean) => {
+    const paths = glob.sync('src/organisms/**/*.scss', { nodir: true });
+
+    [].forEach.call(paths, (p: string) => styleOrganism(p, isReady));
+  }, 200);
+
+  const styleTemplates = debounce((isReady: boolean) => {
+    const paths = glob.sync('src/templates/**/*.scss', { nodir: true });
+
+    [].forEach.call(paths, (p: string) => styleTemplate(p, isReady));
+  }, 200);
+
+  const styleBase = debounce((isReady: boolean) => compile('src/assets/styles/style-base.scss', { isReady }), 200);
+  const stylePlState = debounce((isReady: boolean) => compile('xpack/styles/pl-states.scss', { isReady }), 200);
+  const styleRoot = debounce((isReady: boolean) => compile('xpack/styles/root.scss', { isReady }), 200);
+  const styleOrganism = (srcFile: string, isReady: boolean) => compile(srcFile, { prefix: 'b-', isReady });
+  const styleTemplate = (srcFile: string, isReady: boolean) => compile(srcFile, { prefix: 'p-', isReady });
+
+  const sassCompile = (inputPath: string, isReady: boolean) => {
+    const p = slash(inputPath);
+
+    if (p.startsWith('src/assets/styles/00-abstracts/') || p.startsWith('src/assets/styles/01-mixins/')) {
+      styleBase(isReady);
+      styleOrganisms(isReady);
+      styleTemplates(isReady);
+      stylePlState(isReady);
+    }
+
+    if (p.startsWith('src/atoms') || p.startsWith('src/molecules') || p.startsWith('src/assets/styles/02-base')) {
+      styleBase(isReady);
+    }
+
+    if (p.startsWith('src/organisms')) {
+      if (path.basename(p).startsWith('_')) {
+        glob
+          .sync(path.dirname(p) + '/*.scss', { nodir: true })
+          .filter((p) => !path.basename(p).startsWith('_'))
+          .forEach((p) => styleOrganism(p, isReady));
+      } else {
+        styleOrganism(p, isReady);
+      }
+    }
+
+    if (p.startsWith('src/templates')) {
+      if (path.basename(p).startsWith('_')) {
+        glob
+          .sync(path.dirname(p) + '/*.scss', { nodir: true })
+          .filter((p) => !path.basename(p).startsWith('_'))
+          .forEach((p) => styleTemplate(p, isReady));
+      } else {
+        styleTemplate(p, isReady);
+      }
+    }
+
+    if (p.startsWith('xpack/styles/pl-states')) {
+      stylePlState(isReady);
+    } else if (p.startsWith('xpack/styles')) {
+      styleRoot(isReady);
+    }
+  };
+
+  if (isWatch) {
+    const watcher = watch(['src', 'xpack/styles'], { ignored: (path, stats) => !!stats?.isFile() && !path.endsWith('.scss') });
+    let isReady = false;
+
+    watcher
+      .on('ready', () => {
+        log('SCSS ready!');
+        isReady = true;
+      })
+      .on('add', (path) => sassCompile(path, isReady))
+      .on('change', (path) => sassCompile(path, isReady))
+      .on('unlink', (path) => log(`File ${path} has been removed`));
+  } else {
+    styleBase(true);
+    stylePlState(true);
+
+    glob
+      .sync(['src/{organisms,templates}/**/*.scss', 'xpack/styles/**/*.scss'])
+      .filter((p) => !path.basename(p).startsWith('_'))
+      .forEach((path) => sassCompile(path, true));
   }
+}; // end _run
 
-  if (p.startsWith('xpack/styles/pl-states')) {
-    stylePlState(isReady);
-  } else if (p.startsWith('xpack/styles')) {
-    styleRoot(isReady);
-  }
-};
+// Direct execution support
+const isDirectRun = process.argv[1]?.endsWith('styles.js') || process.argv[1]?.endsWith('styles.ts');
 
-if (isWatch) {
-  const watcher = watch(['src', 'xpack/styles'], { ignored: (path, stats) => !!stats?.isFile() && !path.endsWith('.scss') });
-  let isReady = false;
-
-  watcher
-    .on('ready', () => {
-      log('SCSS ready!');
-      isReady = true;
-    })
-    .on('add', (path) => sassCompile(path, isReady))
-    .on('change', (path) => sassCompile(path, isReady))
-    .on('unlink', (path) => log(`File ${path} has been removed`));
-} else {
-  styleBase(true);
-  stylePlState(true);
-
-  glob
-    .sync(['src/{organisms,templates}/**/*.scss', 'xpack/styles/**/*.scss'])
-    .filter((p) => !path.basename(p).startsWith('_'))
-    .forEach((path) => sassCompile(path, true));
+if (isDirectRun) {
+  runStyles({ watch: process.argv.includes('--watch') });
 }
-
-export {};

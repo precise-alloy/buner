@@ -1,4 +1,6 @@
 /* eslint-disable no-console */
+import type { PackageManager } from './helpers/install.js';
+
 import path from 'path';
 
 import chalk from 'chalk';
@@ -11,12 +13,13 @@ import { installTemplate } from './install-template.js';
 
 interface Props {
   appPath: string;
+  packageManager: PackageManager;
 }
 
 const { green } = chalk;
 
 const createApp = async (model: Props) => {
-  const { appPath } = model;
+  const { appPath, packageManager } = model;
   const root = path.resolve(appPath);
 
   if (!(await isWriteable(path.dirname(root)))) {
@@ -40,11 +43,10 @@ const createApp = async (model: Props) => {
 
   console.log(`\nCreating a new app in ${green(root)}.`);
 
-  process.chdir(root);
-
   await installTemplate({
     appName,
     root,
+    packageManager,
   });
 
   console.log('\nInitializing a git repository.');

@@ -3,7 +3,7 @@ import path from 'path';
 import { glob } from 'glob';
 import { PluginOption } from 'vite';
 
-import { root, mode } from '../paths';
+import { root, packageRoot, mode } from '../paths';
 const scriptOnly = process.env.scriptOnly;
 
 const options = (): PluginOption => {
@@ -16,7 +16,7 @@ const options = (): PluginOption => {
       inputs['index'] = `${root}/index.html`;
     }
 
-    const filePaths = glob.sync(['/src/assets/**/*.entry.ts', '/xpack/scripts/**/*.entry.ts'], { root: root });
+    const filePaths = glob.sync([`${root}/src/assets/**/*.entry.ts`, `${packageRoot}/xpack/scripts/**/*.entry.ts`]);
 
     [].forEach.call(filePaths, (filePath: string) => {
       const fileName = path.basename(filePath).toLowerCase();

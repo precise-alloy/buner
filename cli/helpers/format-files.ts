@@ -2,6 +2,11 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
 
+const writeFile = async (filePath: string, data: string) => {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, data);
+};
+
 const formatFiles = async (root: string) => {
   let filePath, data;
 
@@ -9,7 +14,7 @@ const formatFiles = async (root: string) => {
   filePath = path.join(root, 'src/mocks/handlers.ts');
   data = "import { handlers } from './consts';\n\nexport { handlers };";
 
-  await fs.writeFile(filePath, data + os.EOL);
+  await writeFile(filePath, data + os.EOL);
 
   // example mock file
   filePath = path.join(root, 'src/mocks/example/index.ts');
@@ -24,22 +29,25 @@ const formatFiles = async (root: string) => {
     );
   `;
 
-  await fs.writeFile(filePath, data + os.EOL);
+  await writeFile(filePath, data + os.EOL);
 
   // react loader
   filePath = path.join(root, 'src/react-loader.tsx');
-  data = await fs.readFile(filePath, 'utf8');
-  data = data.replace(
-    /const blocks((?!};).)*};/s,
-    "const blocks: { [name: string]: any } = {\n\troot: lazy(() => import('./organisms/root/Root')),\n};"
-  );
+  data = [
+    "import { lazy } from 'react';",
+    '',
+    'export const blocks: { [name: string]: any } = {',
+    "\troot: lazy(() => import('./organisms/root/Root')),",
+    '};',
+    '',
+  ].join('\n');
 
-  await fs.writeFile(filePath, data);
+  await writeFile(filePath, data);
 
   // src/_types/atoms.d.ts
   filePath = path.join(root, 'src/_types/atoms.d.ts');
 
-  await fs.writeFile(
+  await writeFile(
     filePath,
     `
       import { BasedAtomicModel } from "./_general";
@@ -49,7 +57,7 @@ const formatFiles = async (root: string) => {
   // src/_types/molecules.d.d.ts
   filePath = path.join(root, 'src/_types/molecules.d.ts');
 
-  await fs.writeFile(
+  await writeFile(
     filePath,
     `
       import { BasedAtomicModel } from "./_general";
@@ -59,7 +67,7 @@ const formatFiles = async (root: string) => {
   // src/_types/organisms.d.ts
   filePath = path.join(root, 'src/_types/organisms.d.ts');
 
-  await fs.writeFile(
+  await writeFile(
     filePath,
     `
       import { BasedAtomicModel } from "./_general";
@@ -73,7 +81,7 @@ const formatFiles = async (root: string) => {
   // pages/Home.tsx
   filePath = path.join(root, 'src/pages/Home.tsx');
 
-  await fs.writeFile(
+  await writeFile(
     filePath,
     `
       import Template from '@templates/home/Home';
@@ -89,7 +97,7 @@ const formatFiles = async (root: string) => {
   // templates/home/Home.tsx
   filePath = path.join(root, 'src/templates/home/Home.tsx');
 
-  await fs.writeFile(
+  await writeFile(
     filePath,
     `
       import { FooterModel, HeaderModel } from '@_types/organisms';
@@ -124,7 +132,7 @@ const formatFiles = async (root: string) => {
   // src/organisms/header/Header.tsx
   filePath = path.join(root, 'src/organisms/header/Header.tsx');
 
-  await fs.writeFile(
+  await writeFile(
     filePath,
     `
       import { getModifiers } from '@helpers/functions';
@@ -149,12 +157,12 @@ const formatFiles = async (root: string) => {
   // src/organisms/header/Header.scss
   filePath = path.join(root, 'src/organisms/header/Header.scss');
 
-  await fs.writeFile(filePath, '');
+  await writeFile(filePath, '');
 
   // src/organisms/footer/Footer.tsx
   filePath = path.join(root, 'src/organisms/footer/Footer.tsx');
 
-  await fs.writeFile(
+  await writeFile(
     filePath,
     `
       import { getModifiers } from '@helpers/functions';
@@ -179,7 +187,7 @@ const formatFiles = async (root: string) => {
   // src/organisms/footer/Footer.scss
   filePath = path.join(root, 'src/organisms/footer/Footer.scss');
 
-  await fs.writeFile(filePath, '');
+  await writeFile(filePath, '');
 
   return ['xxx'];
 };
